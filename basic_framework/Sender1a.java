@@ -66,9 +66,6 @@ public class Sender1a {
                 DatagramPacket packetToSend = new DatagramPacket(packetBytes, packetBytes.length, destIPAddress, destPort);
                 clientSocket.send(packetToSend);
 
-                // Sleep for 10ms between sending packets to prevent losing packets
-                Thread.sleep(50);
-
                 sequenceNum++;
             }
 

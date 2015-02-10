@@ -106,14 +106,7 @@ public class Receiver1a {
     }
 
     public static void main(final String[] args) {
-        Thread serverThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                Receiver1a server = new Receiver1a(Integer.parseInt(args[0]));
-                server.receiveFile(args[1]);
-            }
-        });
-        serverThread.start();
-
+        Receiver1a server = new Receiver1a(Integer.parseInt(args[0]));
+        server.receiveFile(args[1]);
     }
 }
