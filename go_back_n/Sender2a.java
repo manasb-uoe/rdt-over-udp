@@ -1,16 +1,14 @@
-package com.manas.comn;
-
 import java.io.*;
 import java.net.*;
 import java.util.ArrayList;
 
-public class GoBackNSender {
+public class Sender2a {
 
-    private final String TAG = "[" + GoBackNSender.class.getSimpleName() + "]";
+    private final String TAG = "[" + Sender2a.class.getSimpleName() + "]";
     private DatagramSocket clientSocket;
     private static int IDEAL_RETRY_TIMEOUT = 50;
 
-    public GoBackNSender() {
+    public Sender2a() {
         try {
             clientSocket = new DatagramSocket();
             clientSocket.setSoTimeout(IDEAL_RETRY_TIMEOUT);
@@ -291,7 +289,7 @@ public class GoBackNSender {
     }
 
     public static void main(String[] args) {
-        GoBackNSender sender = new GoBackNSender();
+        Sender2a sender = new Sender2a();
         sender.sendFile(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]));
     }
 }

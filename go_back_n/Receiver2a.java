@@ -1,5 +1,3 @@
-package com.manas.comn;
-
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -9,12 +7,12 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 
-public class GoBackNReceiver {
+public class Receiver2a {
 
-    private final String TAG = "[" + GoBackNReceiver.class.getSimpleName() + "]";
+    private final String TAG = "[" + Receiver2a.class.getSimpleName() + "]";
     private DatagramSocket serverSocket;
 
-    public GoBackNReceiver(int port) {
+    public Receiver2a(int port) {
         try {
             serverSocket = new DatagramSocket(port);
         } catch (SocketException e) {
@@ -137,7 +135,7 @@ public class GoBackNReceiver {
     }
 
     public static void main(final String[] args) {
-        GoBackNReceiver server = new GoBackNReceiver(Integer.parseInt(args[0]));
+        Receiver2a server = new Receiver2a(Integer.parseInt(args[0]));
         server.receiveFile(args[1]);        
     }
 }
