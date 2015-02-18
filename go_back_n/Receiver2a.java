@@ -6,6 +6,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
+import java.net.SocketTimeoutException;
 
 public class Receiver2a {
 
@@ -15,7 +16,9 @@ public class Receiver2a {
     public Receiver2a(int port) {
         try {
             serverSocket = new DatagramSocket(port);
-        } catch (SocketException e) {
+            serverSocket.setSoTimeout(5000);
+        }
+        catch (SocketException e) {
             e.printStackTrace();
         }
     }
@@ -71,9 +74,15 @@ public class Receiver2a {
             writeToFile(filePath, baos.toByteArray());
             System.out.println(TAG + " File received and saved successfully");
 
-        } catch (IOException e) {
+        }
+        catch (SocketTimeoutException e) {
+            System.out.println(TAG + " Receiver timed out.");
+            System.exit(1);
+        }  
+        catch (IOException e) {
             e.printStackTrace();
-        } finally {
+        } 
+        finally {
             if (serverSocket != null) {
                 serverSocket.close();
             }
