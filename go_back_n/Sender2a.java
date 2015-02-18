@@ -28,7 +28,7 @@ public class Sender2a {
         }
         catch (UnknownHostException e) {
             e.printStackTrace();
-        }
+        }   
 
         // read file into a byte array
         File fileToSend = new File(filePath);
@@ -50,7 +50,7 @@ public class Sender2a {
             byte[] packetBytes = preparePacketBytes(sequenceNum, isLastPacket, fileBytes, bytesSent);
             DatagramPacket packetToSend = new DatagramPacket(packetBytes, packetBytes.length, destIPAddress, destPort);
 
-            if (sequenceNum < windowBase + windowSize) {   // if pipeline is not full
+            if (sequenceNum <= windowBase + windowSize) {   // if pipeline is not full
                 // send packet and append it to sent packets list
                 try {
                     clientSocket.send(packetToSend);
@@ -62,7 +62,7 @@ public class Sender2a {
                     bytesSent += 1021;
 
                     // TODO this has only be added temporarily
-                    Thread.sleep(5);
+                    Thread.sleep(0);
                 }
                 catch (IOException e) {
                     e.printStackTrace();
@@ -116,7 +116,7 @@ public class Sender2a {
                                 retransmissionCounter += 1;
 
                                 // TODO this has only be added temporarily
-                                Thread.sleep(50);
+                                Thread.sleep(0);
 
                                 System.out.println(TAG + " Resending packet with sequence number: " + j);
                             }
@@ -134,6 +134,7 @@ public class Sender2a {
 
         // continue to receive acknowledgements until last acknowledgement is received
         boolean isLastAckPacket = false;
+        int resendCounter = 0;
 
         while (!isLastAckPacket) {
             while (true) {
@@ -176,28 +177,40 @@ public class Sender2a {
                         System.out.println(TAG + " Received final acknowledgment, now shutting down.");
                     }
 
+                    // reset resend counter every time an acknowledgment is received
+                    resendCounter = 0;
+
                     break;
                 }
                 else {
-                    for (int j = windowBase; j < sequenceNum; j++) {
-                        byte[] packetToResendBytes = sentPacketsList.get(j);
-                        DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
+                    resendCounter++;
 
-                        try {
-                            clientSocket.send(packetToResend);
-                            retransmissionCounter += 1;
+                    if (resendCounter < 20) {   
+                        for (int j = windowBase; j < sequenceNum; j++) {
+                            byte[] packetToResendBytes = sentPacketsList.get(j);
+                            DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
 
-                            // TODO this has only be added temporarily
-                            Thread.sleep(50);
+                            try {
+                                clientSocket.send(packetToResend);
+                                retransmissionCounter += 1;
 
-                            System.out.println(TAG + " Resending packet with sequence number: " + j);
+                                // TODO this has only be added temporarily
+                                Thread.sleep(0);
+
+                                System.out.println(TAG + " Resending packet with sequence number: " + j);
+                            }
+                            catch (IOException e) {
+                                e.printStackTrace();
+                            }
+                            catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
                         }
-                        catch (IOException e) {
-                            e.printStackTrace();
-                        }
-                        catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+                    }
+                    else {
+                        isLastAckPacket = true;
+                        System.out.println(TAG + " Let assume we received final acknowledgment, now shutting down. LOL");
+                        break;
                     }
                 }
             }

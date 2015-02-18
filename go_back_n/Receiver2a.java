@@ -31,9 +31,9 @@ public class Receiver2a {
 
             int sequenceNum = 0;
             int previousSequenceNum = -1;
-            boolean isLastPacket = false;
+            boolean canQuit = false;
 
-            while (!isLastPacket) {
+            while (!canQuit) {
                 // create separate byte arrays for full packet bytes and file bytes (without header)
                 byte[] packetBytes = new byte[1024];
                 byte[] fileBytes = new byte[1021];
@@ -46,7 +46,7 @@ public class Receiver2a {
                 sequenceNum = ((packetBytes[0] & 0xFF) << 8) + (packetBytes[1] & 0xFF);
 
                 // retrieve last message flag
-                isLastPacket = (packetBytes[2] & 0xFF) == 1;
+                boolean isLastPacket = (packetBytes[2] & 0xFF) == 1;
 
                 if (sequenceNum == (previousSequenceNum + 1)) {
                     previousSequenceNum = sequenceNum;
@@ -60,7 +60,15 @@ public class Receiver2a {
                     baos.write(fileBytes);
 
                     System.out.println(TAG + " Received packet with sequence number: " + previousSequenceNum +" and flag: " + isLastPacket);
-                } else {
+
+                    if (isLastPacket) {
+                        // write all bytes to file and quit      
+                        writeToFile(filePath, baos.toByteArray());
+                        canQuit = true;
+                        System.out.println(TAG + " File received and saved successfully");
+                    }
+                } 
+                else {
                     System.out.println(TAG + " Expected sequence number: " + (previousSequenceNum + 1) + " but received " + sequenceNum);
                 }
 
@@ -69,11 +77,6 @@ public class Receiver2a {
                 int senderPort = receivedPacket.getPort();
                 sendAcknowledgment(previousSequenceNum, senderIPAddress, senderPort);
             }
-
-            // write all bytes to file and quit      
-            writeToFile(filePath, baos.toByteArray());
-            System.out.println(TAG + " File received and saved successfully");
-
         }
         catch (SocketTimeoutException e) {
             System.out.println(TAG + " Receiver timed out.");
