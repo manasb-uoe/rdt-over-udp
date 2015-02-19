@@ -80,7 +80,6 @@ public class Receiver2a {
         }
         catch (SocketTimeoutException e) {
             System.out.println(TAG + " Receiver timed out.");
-            System.exit(1);
         }  
         catch (IOException e) {
             e.printStackTrace();
