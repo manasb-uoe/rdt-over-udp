@@ -12,8 +12,7 @@ public class Sender2a {
         try {
             clientSocket = new DatagramSocket();
             clientSocket.setSoTimeout(IDEAL_RETRY_TIMEOUT);
-        }
-        catch (SocketException e) {
+        } catch (SocketException e) {
             e.printStackTrace();
         }
     }
@@ -25,10 +24,9 @@ public class Sender2a {
         InetAddress destIPAddress = null;
         try {
             destIPAddress = InetAddress.getByName(destServerName);
-        }
-        catch (UnknownHostException e) {
+        } catch (UnknownHostException e) {
             e.printStackTrace();
-        }   
+        }
 
         // read file into a byte array
         File fileToSend = new File(filePath);
@@ -36,42 +34,26 @@ public class Sender2a {
 
         long startTime = System.currentTimeMillis();    // start time for calculating throughput
         int sequenceNum = 0;                            // sequence number of packet to be sent
-        boolean isLastPacket = false;                   // flag to indicate last packet
         int retransmissionCounter = 0;                  // counter for retransmissions
-        int windowBase = 0;                             // sequence number of last acknowledged packet (base of window)
-        int bytesSent = 0;                              // number of bytes sent so far
+        int windowBase = -1;                            // sequence number of last acknowledged packet (base of window)
 
-        // list of all packets sent so far
-        ArrayList<byte[]> sentPacketsList = new ArrayList<byte[]>();
+        // prepare a list of all packets to be sent
+        ArrayList<byte[]> allPacketsList = prepareAllPackets(fileBytes);
 
-        while (bytesSent < fileBytes.length) {
-            // prepare packet to be sent
-            isLastPacket = bytesSent + 1021 >= fileBytes.length;
-            byte[] packetBytes = preparePacketBytes(sequenceNum, isLastPacket, fileBytes, bytesSent);
+        while (sequenceNum < allPacketsList.size()) {
+            byte[] packetBytes = allPacketsList.get(sequenceNum);
             DatagramPacket packetToSend = new DatagramPacket(packetBytes, packetBytes.length, destIPAddress, destPort);
 
             if (sequenceNum <= windowBase + windowSize) {   // if pipeline is not full
-                // send packet and append it to sent packets list
                 try {
                     clientSocket.send(packetToSend);
-                    sentPacketsList.add(packetBytes);
-
                     System.out.println(TAG + " Sent packet with sequence number: " + sequenceNum);
 
                     sequenceNum++;
-                    bytesSent += 1021;
-
-                    // TODO this has only be added temporarily
-                    Thread.sleep(0);
-                }
-                catch (IOException e) {
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
-                catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-            else {   // if pipeline is full;
+            } else {  // if pipeline is full
                 while (true) {
                     boolean ackReceived = false;
                     byte[] ackBytes = new byte[2];
@@ -83,15 +65,12 @@ public class Sender2a {
                         clientSocket.receive(ackPacket);
                         ackSequenceNum = ((ackBytes[0] & 0xff) << 8) + (ackBytes[1] & 0xff);
                         ackReceived = true;
-                    }
-                    catch (SocketTimeoutException e) {
+                    } catch (SocketTimeoutException e) {
                         System.out.println(TAG + " Socket timed out while waiting for acknowledgment");
                         ackReceived = false;
-                    }
-                    catch (SocketException e) {
+                    } catch (SocketException e) {
                         e.printStackTrace();
-                    }
-                    catch (IOException e) {
+                    } catch (IOException e) {
                         e.printStackTrace();
                     }
 
@@ -105,25 +84,17 @@ public class Sender2a {
                             windowBase = ackSequenceNum;
                         }
                         break;
-                    }
-                    else {
+                    } else {
                         for (int j = windowBase; j < sequenceNum; j++) {
-                            byte[] packetToResendBytes = sentPacketsList.get(j);
+                            byte[] packetToResendBytes = allPacketsList.get(j);
                             DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
 
                             try {
                                 clientSocket.send(packetToResend);
                                 retransmissionCounter += 1;
 
-                                // TODO this has only be added temporarily
-                                Thread.sleep(0);
-
                                 System.out.println(TAG + " Resending packet with sequence number: " + j);
-                            }
-                            catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                            catch (InterruptedException e) {
+                            } catch (IOException e) {
                                 e.printStackTrace();
                             }
                         }
@@ -137,81 +108,66 @@ public class Sender2a {
         int resendCounter = 0;
 
         while (!isLastAckPacket) {
-            while (true) {
-                boolean ackReceived = false;
-                byte[] ackBytes = new byte[2];
+            boolean ackReceived = false;
+            byte[] ackBytes = new byte[2];
 
-                DatagramPacket ackPacket = new DatagramPacket(ackBytes, ackBytes.length);
-                int ackSequenceNum = 0;
+            DatagramPacket ackPacket = new DatagramPacket(ackBytes, ackBytes.length);
+            int ackSequenceNum = 0;
 
-                try {
-                    clientSocket.receive(ackPacket);
-                    ackSequenceNum = ((ackBytes[0] & 0xff) << 8) + (ackBytes[1] & 0xff);
-                    ackReceived = true;
+            try {
+                clientSocket.receive(ackPacket);
+                ackSequenceNum = ((ackBytes[0] & 0xff) << 8) + (ackBytes[1] & 0xff);
+                ackReceived = true;
+            } catch (SocketTimeoutException e) {
+                System.out.println(TAG + " Socket timed out while waiting for acknowledgment");
+                ackReceived = false;
+            } catch (SocketException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            // whenever ack is received, break to receive other acknowledgments
+            // else, resend all unacknowledged packets in the current window
+            if (ackReceived) {
+                System.out.println(TAG + " Received acknowledgment with sequence number: " + ackSequenceNum);
+
+                // if ack sequence number > window base, shift window forward
+                if (ackSequenceNum > windowBase) {
+                    windowBase = ackSequenceNum;
                 }
-                catch (SocketTimeoutException e) {
-                    System.out.println(TAG + " Socket timed out while waiting for acknowledgment");
-                    ackReceived = false;
-                }
-                catch (SocketException e) {
-                    e.printStackTrace();
-                }
-                catch (IOException e) {
-                    e.printStackTrace();
+
+                // if ack sequence number == last packet's sequence number,
+                // set isLastAckPacket to true so that we can break from the while loop and close the socket
+                if (ackSequenceNum == allPacketsList.size() - 1) {
+                    isLastAckPacket = true;
+                    System.out.println(TAG + " Received final acknowledgment, now shutting down.");
                 }
 
-                // whenever ack is received, break to receive other acknowledgments
-                // else, resend all unacknowledged packets in the current window
-                if (ackReceived) {
-                    System.out.println(TAG + " Received acknowledgment with sequence number: " + ackSequenceNum);
+                // reset resend counter every time an acknowledgment is received
+                resendCounter = 0;
 
-                    // if ack sequence number > window base, shift window forward
-                    if (ackSequenceNum > windowBase) {
-                        windowBase = ackSequenceNum;
-                    }
+            } else {
+                resendCounter++;
 
-                    // if ack sequence number == last packet's sequence number,
-                    // set isLastAckPacket to true so that we can break from both while loops and close the socket
-                    if (ackSequenceNum == sequenceNum-1) {  // 1 subtracted since we incremented sequence number after sending last packet
-                        isLastAckPacket = true;
-                        System.out.println(TAG + " Received final acknowledgment, now shutting down.");
-                    }
+                if (resendCounter < 20) {
+                    for (int j = windowBase; j < sequenceNum; j++) {
+                        byte[] packetToResendBytes = allPacketsList.get(j);
+                        DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
 
-                    // reset resend counter every time an acknowledgment is received
-                    resendCounter = 0;
+                        try {
+                            clientSocket.send(packetToResend);
+                            retransmissionCounter += 1;
 
-                    break;
-                }
-                else {
-                    resendCounter++;
-
-                    if (resendCounter < 20) {   
-                        for (int j = windowBase; j < sequenceNum; j++) {
-                            byte[] packetToResendBytes = sentPacketsList.get(j);
-                            DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
-
-                            try {
-                                clientSocket.send(packetToResend);
-                                retransmissionCounter += 1;
-
-                                // TODO this has only be added temporarily
-                                Thread.sleep(0);
-
-                                System.out.println(TAG + " Resending packet with sequence number: " + j);
-                            }
-                            catch (IOException e) {
-                                e.printStackTrace();
-                            }
-                            catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                            System.out.println(TAG + " Resending packet with sequence number: " + j);
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
                     }
-                    else {
-                        isLastAckPacket = true;
-                        System.out.println(TAG + " Let assume we received final acknowledgment, now shutting down. LOL");
-                        break;
-                    }
+                } else {
+                    isLastAckPacket = true;
+                    System.out.println(TAG + " Let assume we received final acknowledgment, now shutting down. LOL");
+                    break;
                 }
             }
         }
@@ -247,27 +203,22 @@ public class Sender2a {
 
             return baos.toByteArray();
 
-        }
-        catch (FileNotFoundException e) {
+        } catch (FileNotFoundException e) {
             e.printStackTrace();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
-        }
-        finally {
+        } finally {
             if (is != null) {
                 try {
                     is.close();
-                }
-                catch (IOException e) {
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
             if (baos != null) {
                 try {
                     baos.close();
-                }
-                catch (IOException e) {
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
             }
@@ -275,30 +226,39 @@ public class Sender2a {
         return null;
     }
 
-    public static byte[] preparePacketBytes(int sequenceNum, boolean isLastPacket, byte[] fileBytes, int bytesSent) {
-        byte[] packetBytes = new byte[1024];
+    private static ArrayList<byte[]> prepareAllPackets(byte[] fileBytes) {
+        ArrayList<byte[]> allPacketsList = new ArrayList<byte[]>();
+        int sequenceNum = 0;
 
-        // add 16 bit sequence number as first 2 bytes
-        packetBytes[0] = (byte) (sequenceNum >> 8);
-        packetBytes[1] = (byte) (sequenceNum);
+        for (int i = 0; i < fileBytes.length; i += 1021) {
+            boolean isLastPacket = i + 1021 >= fileBytes.length;
 
-        // add last message flag as 3rd byte
-        packetBytes[2] = isLastPacket ? (byte) 1 : (byte) 0;
+            byte[] packetBytes = new byte[1024];
 
-        // add file bytes to remaining 1021 bytes
-        if (!isLastPacket) {
-            for (int j=0; j<1021; j++) {
-                packetBytes[j+3] = fileBytes[bytesSent+j];
+            // add 16 bit sequence number as first 2 bytes
+            packetBytes[0] = (byte) (sequenceNum >> 8);
+            packetBytes[1] = (byte) (sequenceNum);
+
+            // add last message flag as 3rd byte
+            packetBytes[2] = isLastPacket ? (byte) 1 : (byte) 0;
+
+            // add file bytes to remaining 1021 bytes
+            if (!isLastPacket) {
+                for (int j = 0; j < 1021; j++) {
+                    packetBytes[j + 3] = fileBytes[i + j];
+                }
+            } else {
+                // if last packet, only write remaining bytes instead of 1021
+                for (int j = 0; j < fileBytes.length - i; j++) {
+                    packetBytes[j + 3] = fileBytes[i + j];
+                }
             }
-        }
-        else {
-            // if last packet, only write remaining bytes instead of 1021
-            for (int j=0; j<fileBytes.length-bytesSent; j++) {
-                packetBytes[j+3] = fileBytes[bytesSent+j];
-            }
+
+            allPacketsList.add(packetBytes);
+            sequenceNum++;
         }
 
-        return packetBytes;
+        return allPacketsList;
     }
 
     public static void main(String[] args) {

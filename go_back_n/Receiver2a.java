@@ -2,11 +2,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.net.SocketTimeoutException;
+import java.net.*;
 
 public class Receiver2a {
 
@@ -17,8 +13,7 @@ public class Receiver2a {
         try {
             serverSocket = new DatagramSocket(port);
             serverSocket.setSoTimeout(5000);
-        }
-        catch (SocketException e) {
+        } catch (SocketException e) {
             e.printStackTrace();
         }
     }
@@ -52,14 +47,14 @@ public class Receiver2a {
                     previousSequenceNum = sequenceNum;
 
                     // retrieve file bytes from packet bytes
-                    for (int i=3; i<packetBytes.length; i++) {
-                        fileBytes[i-3] = packetBytes[i];
+                    for (int i = 3; i < packetBytes.length; i++) {
+                        fileBytes[i - 3] = packetBytes[i];
                     }
 
                     // write file bytes to file
                     baos.write(fileBytes);
 
-                    System.out.println(TAG + " Received packet with sequence number: " + previousSequenceNum +" and flag: " + isLastPacket);
+                    System.out.println(TAG + " Received packet with sequence number: " + previousSequenceNum + " and flag: " + isLastPacket);
 
                     if (isLastPacket) {
                         // write all bytes to file and quit      
@@ -67,8 +62,7 @@ public class Receiver2a {
                         canQuit = true;
                         System.out.println(TAG + " File received and saved successfully");
                     }
-                } 
-                else {
+                } else {
                     System.out.println(TAG + " Expected sequence number: " + (previousSequenceNum + 1) + " but received " + sequenceNum);
                 }
 
@@ -77,14 +71,11 @@ public class Receiver2a {
                 int senderPort = receivedPacket.getPort();
                 sendAcknowledgment(previousSequenceNum, senderIPAddress, senderPort);
             }
-        }
-        catch (SocketTimeoutException e) {
+        } catch (SocketTimeoutException e) {
             System.out.println(TAG + " Receiver timed out.");
-        }  
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
-        } 
-        finally {
+        } finally {
             if (serverSocket != null) {
                 serverSocket.close();
             }
@@ -96,7 +87,7 @@ public class Receiver2a {
                 }
             }
             if (serverSocket != null) {
-                serverSocket.close(); 
+                serverSocket.close();
             }
         }
     }
@@ -108,16 +99,15 @@ public class Receiver2a {
         acknowledgementPacketBytes[1] = (byte) (sequenceNum);
 
         try {
-            DatagramPacket acknowledgement = new  DatagramPacket(acknowledgementPacketBytes, acknowledgementPacketBytes.length, address, port);
+            DatagramPacket acknowledgement = new DatagramPacket(acknowledgementPacketBytes, acknowledgementPacketBytes.length, address, port);
             serverSocket.send(acknowledgement);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
         System.out.println(TAG + " Sent acknowledgment with sequence number: " + sequenceNum);
     }
-    
+
     private static void writeToFile(String filePath, byte[] bytes) {
         File file = new File(filePath);
         if (file.exists()) {
@@ -130,11 +120,9 @@ public class Receiver2a {
             fos = new FileOutputStream(file);
             fos.write(bytes);
 
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
-        }
-        finally {
+        } finally {
             try {
                 if (fos != null) {
                     fos.close();
@@ -146,7 +134,13 @@ public class Receiver2a {
     }
 
     public static void main(final String[] args) {
-        Receiver2a server = new Receiver2a(Integer.parseInt(args[0]));
-        server.receiveFile(args[1]);        
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                Receiver2a server = new Receiver2a(Integer.parseInt(args[0]));
+                server.receiveFile(args[1]);
+            }
+        });
+        thread.start();
     }
 }
