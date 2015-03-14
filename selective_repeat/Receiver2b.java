@@ -3,14 +3,21 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Receiver2b {
 
     private final String TAG = "[" + Receiver2b.class.getSimpleName() + "]";
     private DatagramSocket serverSocket;
-    private int DEBUG = 1;
+    private static final int DEBUG = 0;
+    private String filePath;
+    private int windowSize;
 
-    public Receiver2b(int port) {
+    public Receiver2b(int port, String filePath, int windowSize) {
+        this.filePath = filePath;
+        this.windowSize = windowSize;
+
         try {
             serverSocket = new DatagramSocket(port);
             serverSocket.setSoTimeout(5000);
@@ -19,15 +26,18 @@ public class Receiver2b {
         }
     }
 
-    public void receiveFile(String filePath) {
+    public void receiveFile() {
         ByteArrayOutputStream baos = null;
 
         try {
             baos = new ByteArrayOutputStream();
 
-            int sequenceNum = 0;
-            int previousSequenceNum = -1;
             boolean canQuit = false;
+            int lastPacketSequenceNumber = 0;
+            int sequenceNum = 0;
+            int windowBase = -1;
+            int counterlol = 0;
+            ArrayList<Integer> receivedSequenceNumbers = new ArrayList<Integer>();
 
             while (!canQuit) {
                 // create separate byte arrays for full packet bytes and file bytes (without header)
@@ -44,34 +54,53 @@ public class Receiver2b {
                 // retrieve last message flag
                 boolean isLastPacket = (packetBytes[2] & 0xFF) == 1;
 
-//                if (sequenceNum == (previousSequenceNum + 1)) {
-                if (true) {
-                    previousSequenceNum = sequenceNum;
+                // get port and address of sender
+                InetAddress senderIPAddress = receivedPacket.getAddress();
+                int senderPort = receivedPacket.getPort();
 
+                if (sequenceNum > windowBase && sequenceNum < windowBase + windowSize) {
                     // retrieve file bytes from packet bytes
                     for (int i = 3; i < packetBytes.length; i++) {
                         fileBytes[i - 3] = packetBytes[i];
                     }
 
-                    // write file bytes to file
-                    baos.write(fileBytes);
+                    if (!receivedSequenceNumbers.contains(sequenceNum)) {
+                        receivedSequenceNumbers.add(sequenceNum);
+                        // write file bytes to file
+                        baos.write(fileBytes);
+                    }
 
-                    if (DEBUG == 1) System.out.println(TAG + " Received packet with sequence number: " + previousSequenceNum + " and flag: " + isLastPacket);
+                    // shift window
+                    if (sequenceNum == windowBase + 1) {
+                        for (int i = windowBase + 1; i < windowBase + 1 + windowSize; i++) {
+                            if (!receivedSequenceNumbers.contains(i)) {
+                                windowBase = i - 1;
+                                if (DEBUG == 1) System.out.println(TAG + " --------RECEIVER window base shifted to: " + windowBase);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (DEBUG == 1) System.out.println(TAG + " Received packet with sequence number: " + sequenceNum + " and flag: " + isLastPacket);
 
                     if (isLastPacket) {
-                        // write all bytes to file and quit
-                        writeToFile(filePath, baos.toByteArray());
-                        canQuit = true;
-                        System.out.println(TAG + " File received and saved successfully");
+                        lastPacketSequenceNumber = sequenceNum;
                     }
-                } else {
-                    if (DEBUG == 1) System.out.println(TAG + " Expected sequence number: " + (previousSequenceNum + 1) + " but received " + sequenceNum);
-                }
 
-                // get port and address of sender and send acknowledgement (positive or negative, depending on the received packet)
-                InetAddress senderIPAddress = receivedPacket.getAddress();
-                int senderPort = receivedPacket.getPort();
-                sendAcknowledgment(previousSequenceNum, senderIPAddress, senderPort);
+                    if (lastPacketSequenceNumber != 0) {
+                        if (lastPacketSequenceNumber == receivedSequenceNumbers.size() - 1) {
+                            // write all bytes to file and quit
+                            writeToFile(filePath, baos.toByteArray());
+                            canQuit = true;
+                            System.out.println(TAG + " File received and saved successfully");
+                            System.out.println(TAG + " " + Arrays.toString(receivedSequenceNumbers.toArray()));
+                        }
+                    }
+
+                    sendAcknowledgment(sequenceNum, senderIPAddress, senderPort);
+                } else if (sequenceNum > windowBase - windowSize && sequenceNum < windowBase + 1) {
+                    sendAcknowledgment(sequenceNum, senderIPAddress, senderPort);
+                }
             }
         } catch (SocketTimeoutException e) {
             if (DEBUG == 1) System.out.println(TAG + " Receiver timed out.");
@@ -139,8 +168,8 @@ public class Receiver2b {
         Thread thread = new Thread(new Runnable() {
             @Override
             public void run() {
-                Receiver2b server = new Receiver2b(Integer.parseInt(args[0]));
-                server.receiveFile(args[1]);
+                Receiver2b server = new Receiver2b(Integer.parseInt(args[0]), args[1], Integer.parseInt(args[2]));
+                server.receiveFile();
             }
         });
         thread.start();
