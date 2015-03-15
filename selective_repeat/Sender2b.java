@@ -4,15 +4,15 @@ import java.util.Vector;
 
 public class Sender2b {
 
-    private final String TAG = "[" + Sender2b.class.getSimpleName() + "]";
-    private DatagramSocket clientSocket;
-    private static int IDEAL_RETRY_TIMEOUT = 50;
-    private static final int DEBUG = 0;
+    private static final String TAG = "[" + Sender2b.class.getSimpleName() + "]";
+    private static final int DEBUG = 1;
 
+    private DatagramSocket clientSocket;
     private String destServerName;
     private int destPort;
     private InetAddress destIPAddress;
     private String filePath;
+    private int retryTimeout;
     private int windowSize;
 
     private int sequenceNum;                    // sequence number of packet to be sent
@@ -22,15 +22,16 @@ public class Sender2b {
     private Vector<Long> transmissionTimes;     // list of transmission times for all packets
 
 
-    public Sender2b(String destServerName, int destPort, String filePath, int windowSize) {
+    public Sender2b(String destServerName, int destPort, String filePath, int retryTimeout, int windowSize) {
         this.destServerName = destServerName;
         this.destPort = destPort;
         this.filePath = filePath;
+        this.retryTimeout = retryTimeout;
         this.windowSize = windowSize;
 
         try {
             clientSocket = new DatagramSocket();
-            clientSocket.setSoTimeout(IDEAL_RETRY_TIMEOUT);
+            clientSocket.setSoTimeout(5000);
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -60,7 +61,7 @@ public class Sender2b {
         allPacketsList = prepareAllPackets(fileBytes);
         transmissionTimes = new Vector<Long>(allPacketsList.size());
 
-        // start timer handler thread
+        // start timer handler thread which will take care of resending timed out packets
         Thread timerHandlerThread = new Thread(new TimerManagerRunnable());
         timerHandlerThread.start();
 
@@ -72,13 +73,10 @@ public class Sender2b {
                 try {
                     clientSocket.send(packetToSend);
                     transmissionTimes.add(System.currentTimeMillis());
-                    Thread.sleep(10); // TODO remove sleep
                     if (DEBUG == 1) System.out.println(TAG + " Sent packet with sequence number: " + sequenceNum);
 
                     sequenceNum++;
                 } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
             } else {   // if pipeline is full
@@ -96,13 +94,12 @@ public class Sender2b {
                             // mark received packet
                             transmissionTimes.set(ackSequenceNum, null);
 
-                            // if ack sequence number == window base + 1, shift window to next unacknowledged sequence number
+                            // if ack sequence number is first in window, shift window to next unacknowledged sequence number
                             if (ackSequenceNum == windowBase + 1) {
                                 for (int i = windowBase + 1; i < allPacketsList.size(); i++) {
                                     if (i < transmissionTimes.size()) {
                                         if (transmissionTimes.get(i) != null) {
                                             windowBase = i - 1;
-                                            if (DEBUG == 1) System.out.println("--------window base shifted to: " + windowBase);
                                             break;
                                         }
                                     }
@@ -120,10 +117,10 @@ public class Sender2b {
             }
         }
 
-        // keep receiving until last ack is received
-        boolean isLastAckPacket = false;
+        // keep receiving acknowledgments until all acknowledgments received OR resendCounter has exceeded TODO
+        boolean canQuit = false;
 
-        while (!isLastAckPacket) {
+        while (!canQuit) {
             byte[] ackBytes = new byte[2];
             DatagramPacket ackPacket = new DatagramPacket(ackBytes, ackBytes.length);
 
@@ -135,22 +132,20 @@ public class Sender2b {
                     // mark received packet
                     transmissionTimes.set(ackSequenceNum, null);
 
-                    // if ack sequence number == window base + 1, shift window to next unacknowledged sequence number
+                    // if ack sequence number is first in window, shift window to next unacknowledged sequence number
                     if (ackSequenceNum == windowBase + 1) {
                         for (int i = windowBase + 1; i < allPacketsList.size(); i++) {
                             if (transmissionTimes.get(i) != null) {
                                 windowBase = i - 1;
-                                if (DEBUG == 1) System.out.println("--------window base shifted to: " + windowBase);
                                 break;
                             }
                         }
                     }
                 }
 
-                // if ack sequence number == last packet's sequence number,
-                // set isLastAckPacket to true so that we can break from the while loop and close the socket
+                // if all packets have been successfully transmitted (i.e all acks received), then quit
                 if (getTransmittedPacketCount() == allPacketsList.size()) {
-                    isLastAckPacket = true;
+                    canQuit = true;
                     System.out.println(TAG + " Received final acknowledgment, now shutting down.");
                 }
             } catch (SocketTimeoutException e) {
@@ -175,16 +170,18 @@ public class Sender2b {
         System.out.println("--------------------------------------");
     }
 
+    // this runnable keeps iterating through all packet transmission times, and re-sends any packet
+    // whose timer has timed out, and then resets their timer as well
     private class TimerManagerRunnable implements Runnable {
 
         @Override
         public void run() {
             while (!clientSocket.isClosed()) {
                 for (int i = windowBase + 1; i < windowBase + 1 + windowSize; i++) {
-                    if (i < transmissionTimes.size()) {
-                        synchronized (transmissionTimes) {
+                    synchronized (transmissionTimes) {
+                        if (i < transmissionTimes.size()) {
                             if (transmissionTimes.get(i) != null) {
-                                if (System.currentTimeMillis() - transmissionTimes.get(i) >= IDEAL_RETRY_TIMEOUT) {
+                                if ((System.currentTimeMillis() - transmissionTimes.get(i)) >= retryTimeout) {
                                     byte[] packetBytes = allPacketsList.get(i);
                                     DatagramPacket packetToSend = new DatagramPacket(packetBytes, packetBytes.length, destIPAddress, destPort);
                                     try {
@@ -291,7 +288,7 @@ public class Sender2b {
     }
 
     public static void main(String[] args) {
-        Sender2b sender = new Sender2b(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]));
+        Sender2b sender = new Sender2b(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]) ,Integer.parseInt(args[4]));
         sender.sendFile();
     }
 }
