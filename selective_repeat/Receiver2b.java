@@ -1,16 +1,13 @@
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.*;
 
 public class Receiver2b {
 
-    private final String TAG = "[" + Receiver2b.class.getSimpleName() + "]";
-    private DatagramSocket serverSocket;
+    private static final String TAG = "[" + Receiver2b.class.getSimpleName() + "]";
     private static final int DEBUG = 0;
+
+    private DatagramSocket serverSocket;
     private String filePath;
     private int windowSize;
 
@@ -27,17 +24,12 @@ public class Receiver2b {
     }
 
     public void receiveFile() {
-        ByteArrayOutputStream baos = null;
-
         try {
-            baos = new ByteArrayOutputStream();
-
             boolean canQuit = false;
             int lastPacketSequenceNumber = 0;
             int sequenceNum = 0;
             int windowBase = -1;
-            int counterlol = 0;
-            ArrayList<Integer> receivedSequenceNumbers = new ArrayList<Integer>();
+            HashMap<Integer, byte[]> map = new HashMap<Integer, byte[]>();
 
             while (!canQuit) {
                 // create separate byte arrays for full packet bytes and file bytes (without header)
@@ -58,24 +50,22 @@ public class Receiver2b {
                 InetAddress senderIPAddress = receivedPacket.getAddress();
                 int senderPort = receivedPacket.getPort();
 
+                // if packet sequence number is within window, the packet is correctly received
+                // i.e. the packet is buffered, we check if the window can be shifted or not,
+                // and an acknowledgment is sent back to the client
                 if (sequenceNum > windowBase && sequenceNum < windowBase + windowSize) {
                     // retrieve file bytes from packet bytes
                     for (int i = 3; i < packetBytes.length; i++) {
                         fileBytes[i - 3] = packetBytes[i];
                     }
 
-                    if (!receivedSequenceNumbers.contains(sequenceNum)) {
-                        receivedSequenceNumbers.add(sequenceNum);
-                        // write file bytes to file
-                        baos.write(fileBytes);
-                    }
+                    map.put(sequenceNum, fileBytes);
 
-                    // shift window
+                    // shift window if received packet is first in the window
                     if (sequenceNum == windowBase + 1) {
                         for (int i = windowBase + 1; i < windowBase + 1 + windowSize; i++) {
-                            if (!receivedSequenceNumbers.contains(i)) {
+                            if (!map.containsKey(i)) {
                                 windowBase = i - 1;
-                                if (DEBUG == 1) System.out.println(TAG + " --------RECEIVER window base shifted to: " + windowBase);
                                 break;
                             }
                         }
@@ -83,21 +73,25 @@ public class Receiver2b {
 
                     if (DEBUG == 1) System.out.println(TAG + " Received packet with sequence number: " + sequenceNum + " and flag: " + isLastPacket);
 
+                    // when the packet with last flag is received, save its sequence number
                     if (isLastPacket) {
                         lastPacketSequenceNumber = sequenceNum;
                     }
 
+                    // if packet with last flag has already been received, and all other packets before that have also
+                    // been received, then write bytes to file and quit
                     if (lastPacketSequenceNumber != 0) {
-                        if (lastPacketSequenceNumber == receivedSequenceNumbers.size() - 1) {
-                            // write all bytes to file and quit
-                            writeToFile(filePath, baos.toByteArray());
+                        if (lastPacketSequenceNumber == map.size() - 1) {
+                            writeToFile(filePath, map);
                             canQuit = true;
                             System.out.println(TAG + " File received and saved successfully");
-                            System.out.println(TAG + " " + Arrays.toString(receivedSequenceNumbers.toArray()));
                         }
                     }
 
                     sendAcknowledgment(sequenceNum, senderIPAddress, senderPort);
+
+                // else if packet sequence number is within [rcv_base-N, rcv_base-1], then an acknowledgment is sent back to
+                // to the client, however the packet is not buffered
                 } else if (sequenceNum > windowBase - windowSize && sequenceNum < windowBase + 1) {
                     sendAcknowledgment(sequenceNum, senderIPAddress, senderPort);
                 }
@@ -107,16 +101,6 @@ public class Receiver2b {
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
-            if (serverSocket != null) {
-                serverSocket.close();
-            }
-            if (baos != null) {
-                try {
-                    baos.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
             if (serverSocket != null) {
                 serverSocket.close();
             }
@@ -139,19 +123,33 @@ public class Receiver2b {
         if (DEBUG == 1) System.out.println(TAG + " Sent acknowledgment with sequence number: " + sequenceNum);
     }
 
-    private static void writeToFile(String filePath, byte[] bytes) {
+    private static void writeToFile(String filePath, HashMap<Integer, byte[]> receivedPacketsMap) {
         File file = new File(filePath);
         if (file.exists()) {
             file.delete();
         }
 
+        // merge all byte arrays before writing to file
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ArrayList<Integer> sortedKeys = new ArrayList<Integer>(receivedPacketsMap.keySet());
+        Collections.sort(sortedKeys);
+        for (int i : sortedKeys) {
+            try {
+                baos.write(receivedPacketsMap.get(i));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
         FileOutputStream fos = null;
 
+        // finally, write the merged byte array to file
         try {
             fos = new FileOutputStream(file);
-            fos.write(bytes);
-
-        } catch (Exception e) {
+            fos.write(baos.toByteArray());
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
             e.printStackTrace();
         } finally {
             try {
