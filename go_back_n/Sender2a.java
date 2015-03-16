@@ -85,7 +85,7 @@ public class Sender2a {
                         }
                         break;
                     } else {
-                        for (int j = windowBase; j < sequenceNum; j++) {
+                        for (int j = windowBase+1; j < sequenceNum; j++) {
                             byte[] packetToResendBytes = allPacketsList.get(j);
                             DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
 
@@ -151,7 +151,7 @@ public class Sender2a {
                 resendCounter++;
 
                 if (resendCounter < 20) {
-                    for (int j = windowBase; j < sequenceNum; j++) {
+                    for (int j = windowBase+1; j < sequenceNum; j++) {
                         byte[] packetToResendBytes = allPacketsList.get(j);
                         DatagramPacket packetToResend = new DatagramPacket(packetToResendBytes, packetToResendBytes.length, destIPAddress, destPort);
 
