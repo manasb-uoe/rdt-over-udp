@@ -176,7 +176,7 @@ public class Sender2a {
 
         // calculate and print throughput
         int fileSizeKB = fileBytes.length / 1024;
-        long transferTime = (System.currentTimeMillis() - startTime) / 1000;
+        double transferTime = (System.currentTimeMillis() - startTime) / 1000.0;
         double throughput = (double) fileSizeKB / transferTime;
 
         System.out.println("--------------------------------------");
