@@ -5,7 +5,7 @@ import java.util.*;
 public class Receiver2b {
 
     private static final String TAG = "[" + Receiver2b.class.getSimpleName() + "]";
-    private static final int DEBUG = 0;
+    private static final int DEBUG = 1;
 
     private DatagramSocket serverSocket;
     private String filePath;
@@ -53,7 +53,7 @@ public class Receiver2b {
                 // if packet sequence number is within window, the packet is correctly received
                 // i.e. the packet is buffered, we check if the window can be shifted or not,
                 // and an acknowledgment is sent back to the client
-                if (sequenceNum > windowBase && sequenceNum < windowBase + windowSize) {
+                if (sequenceNum > windowBase && sequenceNum <= (windowBase + windowSize)) {
                     // retrieve file bytes from packet bytes
                     for (int i = 3; i < packetBytes.length; i++) {
                         fileBytes[i - 3] = packetBytes[i];
@@ -63,10 +63,12 @@ public class Receiver2b {
 
                     // shift window if received packet is first in the window
                     if (sequenceNum == windowBase + 1) {
-                        for (int i = windowBase + 1; i < windowBase + 1 + windowSize; i++) {
-                            if (!map.containsKey(i)) {
-                                windowBase = i - 1;
-                                break;
+                        while (true) {
+                            if (map.containsKey(windowBase+1)) {
+                            	windowBase++;
+                                System.out.println("------window shifted to: " + windowBase);
+                            } else {
+                            	break;
                             }
                         }
                     }

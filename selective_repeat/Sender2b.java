@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 import java.util.Vector;
 
 public class Sender2b {
@@ -31,7 +32,7 @@ public class Sender2b {
 
         try {
             clientSocket = new DatagramSocket();
-            clientSocket.setSoTimeout(5000);
+            clientSocket.setSoTimeout(1000);
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -41,6 +42,7 @@ public class Sender2b {
         System.out.println(TAG + " Started sending file");
 
         long startTime = System.currentTimeMillis(); // start time for calculating throughput
+        boolean canQuit =false;
 
         sequenceNum = 0;
         retransmissionCounter = 0;
@@ -60,6 +62,9 @@ public class Sender2b {
         // prepare a list of all packets to be sent
         allPacketsList = prepareAllPackets(fileBytes);
         transmissionTimes = new Vector<Long>(allPacketsList.size());
+        for (int i=0; i<allPacketsList.size(); i++) {
+        	transmissionTimes.add(0L);
+        }
 
         // start timer handler thread which will take care of resending timed out packets
         Thread timerHandlerThread = new Thread(new TimerManagerRunnable());
@@ -100,6 +105,7 @@ public class Sender2b {
                                     if (i < transmissionTimes.size()) {
                                         if (transmissionTimes.get(i) != null) {
                                             windowBase = i - 1;
+                                            System.out.println("------window shifted to: " + windowBase);
                                             break;
                                         }
                                     }
@@ -109,7 +115,9 @@ public class Sender2b {
                             }
                         }
                     } catch (SocketTimeoutException e) {
-                        if (DEBUG == 1) System.out.println(TAG + " Socket timed out while waiting for acknowledgment - SocketTimeoutException");
+                        System.out.println(TAG + " Sender shutting down - SocketTimeoutException");
+                        canQuit = true;
+                        break;
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -118,8 +126,6 @@ public class Sender2b {
         }
 
         // keep receiving acknowledgments until all acknowledgments received OR resendCounter has exceeded TODO
-        boolean canQuit = false;
-
         while (!canQuit) {
             byte[] ackBytes = new byte[2];
             DatagramPacket ackPacket = new DatagramPacket(ackBytes, ackBytes.length);
@@ -137,6 +143,7 @@ public class Sender2b {
                         for (int i = windowBase + 1; i < allPacketsList.size(); i++) {
                             if (transmissionTimes.get(i) != null) {
                                 windowBase = i - 1;
+                                System.out.println("------window shifted to: " + windowBase);
                                 break;
                             }
                         }
@@ -149,7 +156,8 @@ public class Sender2b {
                     System.out.println(TAG + " Received final acknowledgment, now shutting down.");
                 }
             } catch (SocketTimeoutException e) {
-                if (DEBUG == 1) System.out.println(TAG + " Socket timed out while waiting for acknowledgment - SocketTimeoutException");
+                canQuit = true;
+                System.out.println(TAG + " Sender shutting down - SocketTimeoutException");
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -159,7 +167,7 @@ public class Sender2b {
 
         // calculate and print throughput
         int fileSizeKB = fileBytes.length / 1024;
-        long transferTime = (System.currentTimeMillis() - startTime) / 1000;
+        double transferTime = (System.currentTimeMillis() - startTime) / 1000.0;
         double throughput = (double) fileSizeKB / transferTime;
 
         System.out.println("--------------------------------------");
@@ -179,7 +187,7 @@ public class Sender2b {
             while (!clientSocket.isClosed()) {
                 for (int i = windowBase + 1; i < windowBase + 1 + windowSize; i++) {
                     synchronized (transmissionTimes) {
-                        if (i < transmissionTimes.size()) {
+                        if (i < allPacketsList.size()) {
                             if (transmissionTimes.get(i) != null) {
                                 if ((System.currentTimeMillis() - transmissionTimes.get(i)) >= retryTimeout) {
                                     byte[] packetBytes = allPacketsList.get(i);
