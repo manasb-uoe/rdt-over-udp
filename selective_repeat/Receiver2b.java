@@ -5,7 +5,7 @@ import java.util.*;
 public class Receiver2b {
 
     private static final String TAG = "[" + Receiver2b.class.getSimpleName() + "]";
-    private static final int DEBUG = 1;
+    private static final int DEBUG = 0;
 
     private DatagramSocket serverSocket;
     private String filePath;
@@ -66,7 +66,6 @@ public class Receiver2b {
                         while (true) {
                             if (map.containsKey(windowBase+1)) {
                             	windowBase++;
-                                System.out.println("------window shifted to: " + windowBase);
                             } else {
                             	break;
                             }

@@ -6,7 +6,7 @@ import java.util.Vector;
 public class Sender2b {
 
     private static final String TAG = "[" + Sender2b.class.getSimpleName() + "]";
-    private static final int DEBUG = 1;
+    private static final int DEBUG = 0;
 
     private DatagramSocket clientSocket;
     private String destServerName;
@@ -61,6 +61,8 @@ public class Sender2b {
 
         // prepare a list of all packets to be sent
         allPacketsList = prepareAllPackets(fileBytes);
+
+        // initialize transmission times vector with all 0s
         transmissionTimes = new Vector<Long>(allPacketsList.size());
         for (int i=0; i<allPacketsList.size(); i++) {
         	transmissionTimes.add(0L);
@@ -105,7 +107,7 @@ public class Sender2b {
                                     if (i < transmissionTimes.size()) {
                                         if (transmissionTimes.get(i) != null) {
                                             windowBase = i - 1;
-                                            System.out.println("------window shifted to: " + windowBase);
+
                                             break;
                                         }
                                     }
@@ -115,8 +117,8 @@ public class Sender2b {
                             }
                         }
                     } catch (SocketTimeoutException e) {
-                        System.out.println(TAG + " Sender shutting down - SocketTimeoutException");
                         canQuit = true;
+                        System.out.println(TAG + " Sender shutting down since it hasn't received anything for quite some time.");
                         break;
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -125,7 +127,7 @@ public class Sender2b {
             }
         }
 
-        // keep receiving acknowledgments until all acknowledgments received OR resendCounter has exceeded TODO
+        // keep receiving acknowledgments until all acknowledgments received
         while (!canQuit) {
             byte[] ackBytes = new byte[2];
             DatagramPacket ackPacket = new DatagramPacket(ackBytes, ackBytes.length);
@@ -143,21 +145,20 @@ public class Sender2b {
                         for (int i = windowBase + 1; i < allPacketsList.size(); i++) {
                             if (transmissionTimes.get(i) != null) {
                                 windowBase = i - 1;
-                                System.out.println("------window shifted to: " + windowBase);
                                 break;
                             }
                         }
                     }
                 }
 
-                // if all packets have been successfully transmitted (i.e all acks received), then quit
+                // if all packets have been successfully transmitted (i.e all acknowledgments received), then quit
                 if (getTransmittedPacketCount() == allPacketsList.size()) {
                     canQuit = true;
                     System.out.println(TAG + " Received final acknowledgment, now shutting down.");
                 }
             } catch (SocketTimeoutException e) {
                 canQuit = true;
-                System.out.println(TAG + " Sender shutting down - SocketTimeoutException");
+                System.out.println(TAG + " Sender shutting down since it hasn't received anything for quite some time.");
             } catch (IOException e) {
                 e.printStackTrace();
             }
