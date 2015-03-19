@@ -6,12 +6,11 @@ public class Sender2a {
 
     private final String TAG = "[" + Sender2a.class.getSimpleName() + "]";
     private DatagramSocket clientSocket;
-    private static int IDEAL_RETRY_TIMEOUT = 50;
 
-    public Sender2a() {
+    public Sender2a(int retryTimeout) {
         try {
             clientSocket = new DatagramSocket();
-            clientSocket.setSoTimeout(IDEAL_RETRY_TIMEOUT);
+            clientSocket.setSoTimeout(retryTimeout);
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -262,7 +261,7 @@ public class Sender2a {
     }
 
     public static void main(String[] args) {
-        Sender2a sender = new Sender2a();
-        sender.sendFile(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[3]));
+        Sender2a sender = new Sender2a(Integer.parseInt(args[3]));
+        sender.sendFile(args[0], Integer.parseInt(args[1]), args[2], Integer.parseInt(args[4]));
     }
 }
